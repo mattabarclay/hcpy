@@ -49,6 +49,7 @@ def hmac(key, msg):
 
 class HCSocket:
     def __init__(self, host, psk64, iv64=None, domain_suffix="", debug=False):
+        self.on_progress = None
         self.host = host
         if domain_suffix and not is_ip_address(host):
             self.host = f"{host}.{domain_suffix}"
@@ -283,6 +284,10 @@ class HCSocket:
             self.dprint(f"error {error}")
             on_error(ws, error)
 
+        def _on_pong(ws, payload):
+            if self.on_progress is not None:
+                self.on_progress()
+
         print(now(), "CON:", self.uri)
         self.ws = websocket.WebSocketApp(
             self.uri,
@@ -291,6 +296,7 @@ class HCSocket:
             on_message=_on_message,
             on_close=_on_close,
             on_error=_on_error,
+            on_pong=_on_pong,
         )
 
         # Set a more robust timeout for the websocket operations

@@ -1,0 +1,5 @@
+# Preserve the deployed dependency/entrypoint and operator build hardening overlay.
+FROM fleet-forge.tail8d805a.ts.net:8443/fleet/hcpy@sha256:673f857327eed66ea9da6e360eccfaa03e3ab6881f6615ed2d64070c76b7d6a2
+COPY hc2mqtt.py HCSocket.py hcpy_health.py /app/
+ARG SC_SOURCE_REVISION
+LABEL org.opencontainers.image.revision=${SC_SOURCE_REVISION}

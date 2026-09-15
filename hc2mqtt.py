@@ -15,6 +15,7 @@ import paho.mqtt.client as mqtt
 from HADiscovery import publish_ha_discovery
 from HCDevice import HCDevice
 from HCSocket import HCSocket
+from hcpy_health import Health
 from utils import clean_international_text, now
 
 SENTINEL = object()
@@ -127,6 +128,7 @@ def hc2mqtt(
 ):
 
     def on_connect(client, userdata, flags, rc):
+        health.progress("mqtt", success=rc == 0)
         if rc == 5:
             hcprint(f"ERROR MQTT connection failed: unauthorized - {rc}")
         elif rc == 0:
@@ -162,6 +164,7 @@ def hc2mqtt(
             hcprint(f"ERROR MQTT connection failed: {rc}")
 
     def on_disconnect(client, userdata, rc):
+        health.progress("mqtt", success=False)
         hcprint(f"ERROR MQTT client disconnected: {rc}")
 
     def on_message(client, userdata, msg):
@@ -197,6 +200,9 @@ def hc2mqtt(
         except Exception as e:
             print(now(), device_name, "ERROR", e, file=sys.stderr, flush=True)
 
+        finally:
+            health.progress("mqtt")
+
     masked_password = "***" if mqtt_password else None
     click.echo(
         f"Hello {devices_file=} {mqtt_host=} {mqtt_prefix=} "
@@ -208,6 +214,7 @@ def hc2mqtt(
     with open(devices_file, "r") as f:
         devices = json.load(f)
 
+    health = Health(len(devices))
     client = mqtt.Client(mqtt_clientname)
 
     if mqtt_username and mqtt_password:
@@ -228,11 +235,13 @@ def hc2mqtt(
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.on_message = on_message
+    client.on_log = health.mqtt_log
+    client.on_connect_fail = lambda _client, _userdata: health.progress("mqtt", success=False)
     client.connect(host=mqtt_host, port=mqtt_port, keepalive=70)
 
     shutdown = Event()
 
-    for device in devices:
+    for index, device in enumerate(devices):
         mqtt_topic = mqtt_prefix + clean_international_text(device["name"])
         thread = Thread(
             target=client_connect,
@@ -246,6 +255,8 @@ def hc2mqtt(
                 ha_discovery,
                 discovery_file,
                 events_as_sensors,
+                health,
+                f"device-{index}",
             ),
             daemon=True,
         )
@@ -274,6 +285,8 @@ def client_connect(
     ha_discovery=False,
     discovery_file=None,
     events_as_sensors=False,
+    health=None,
+    health_component=None,
 ):
     host = device["host"]
     name = device["name"]
@@ -293,20 +306,32 @@ def client_connect(
                     discovery_file, device, mydevice.state, client, mqtt_topic, events_as_sensors
                 )
                 discovery_published = True
+            if health:
+                health.progress(health_component, success=True if msg else None)
         except Exception as e:
+            if health:
+                health.progress(health_component, success=False)
             print(repr(e))
 
     def on_open(ws):
+        if health:
+            health.progress(health_component, success=False)
         client.publish(f"{mqtt_topic}/LWT", "online", retain=True)
 
     def on_close(ws, code, message):
+        if health:
+            health.progress(health_component, success=False)
         client.publish(f"{mqtt_topic}/LWT", "offline", retain=True)
         hcprint(device["name"], "websocket closed, reconnecting...")
 
     retry_delay = 5
     while not (shutdown and shutdown.is_set()):
+        if health:
+            health.progress(health_component, success=False)
         try:
             ws = HCSocket(host, device["key"], device.get("iv", None), domain_suffix, debug)
+            if health:
+                ws.on_progress = lambda: health.progress(health_component)
             mydevice = HCDevice(ws, device, debug)
             published_state.clear()
             discovery_published = False  # Re-publish discovery on each new connection.
@@ -319,6 +344,8 @@ def client_connect(
             print(now(), device["name"], "ERROR", e, file=sys.stderr, flush=True)
             client.publish(f"{mqtt_topic}/LWT", "offline", retain=True)
 
+        if health:
+            health.progress(health_component, success=False)
         hcprint(name, f"reconnecting in {retry_delay}s")
         if shutdown:
             shutdown.wait(retry_delay)
