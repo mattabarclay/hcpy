@@ -1,5 +1,7 @@
-# Python 3.13.15 on Debian trixie, official linux/amd64 manifest resolved 2026-09-17.
-FROM docker.io/library/python:3.13.15-slim-trixie@sha256:cc9dffa47c8294ba9bb795a8dfaeb7b76f2b30acade2c52a461a2999d127eb00
+# Python 3.13.15 on Debian trixie, official linux/amd64 manifest resolved 2026-09-28.
+# Debian rebuilt the same version tag with a newer trixie security snapshot since the
+# 2026-09-17 pin (cc9dffa4...); this repoints to that current build for the OS package fixes.
+FROM docker.io/library/python:3.13.15-slim-trixie@sha256:37134a49d21d2120e4c4d73bb76f8a4ab9aef31f096f7ec2ead48c2feead4332
 
 ARG BASHIO_VERSION="v0.16.2"
 ARG BASHIO_SHA256="d0f0c780c4badd103c00c572b1bf9645520d15a8a8070d6e3d64e35cb9f583aa"
